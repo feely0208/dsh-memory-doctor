@@ -10,6 +10,7 @@
     "locale",
     "skill",
     "assets",
+    "docs",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"

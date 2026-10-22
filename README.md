@@ -1,5 +1,8 @@
 # 深鲸记忆体检 · dsh-memory-doctor
 
+![面板](./docs/panel.png)
+
+
 > 跨会话记忆的**体检 / 瘦身 / 记忆包**。本地明文、零依赖、不上传任何数据。
 
 ## 它解决什么
@@ -39,7 +42,10 @@
 ```bash
 dsh plugin add dsh-memory-doctor
 ```
-（面板安装需要本机有 pnpm；也可以直接把文件夹放进 `dsh-home/plugins/` 后重启）
+
+- 面板安装需要本机有 `pnpm`（DSH 的安装器依赖它）
+- 没有 pnpm 也行：下载仓库 → 把整个文件夹放进 `dsh-home/plugins/` → 重启 DeepWhale Desktop
+- 装好后侧栏出现「记忆体检」图标；命令 `/记忆` 可用
 
 ## 使用
 

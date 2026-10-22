@@ -1,0 +1,6 @@
+panel:
+  title: 深鲸 · 记忆体检
+  refresh: 重新体检
+  export: 导出记忆包
+  archive: 归档勾选的 MEMORY.md 条目
+  hint: 归档 = 移到 archived/，不是删除

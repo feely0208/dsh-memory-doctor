@@ -1,0 +1,4 @@
+# 深鲸记忆体检：挂到当前 profile
+- insert:
+    - id: dsh-memory-doctor
+      name: dsh-memory-doctor

@@ -26,8 +26,17 @@
 - 记忆是**明文 Markdown**（`~/.mnemon/runtime/`），你自己随时能看、能改、能带走
 - Agent 用自带的写文件工具维护记忆，不需要额外工具调用
 
-> ⚠️ 与 `dsh-mnemon` 等记忆插件**二选一**：都用会重复注入。只想用本插件的体检/记忆包时，
-> 可以保留 mnemon 但把本插件注入关掉（后续版本会加开关）。
+## 与别的记忆插件共存 / 替换
+
+本插件默认**会自动让位**：如果检测到 profile 里装着 `dsh-mnemon` 等其他记忆插件，
+就不做每轮注入（只提供体检 / 瘦身 / 记忆包），避免两份记忆打架。
+
+- **共存（推荐先这样）**：保留 mnemon 注入，本插件只当「记忆管家」——体检、归档、导出；
+- **替换**：从 profile 的 bundles/dependencies 里移除别的记忆插件，重启后本插件自动接管注入；
+- **强制开关**：`MEMORY_DOCTOR_INJECT=0` 关、`=1` 开（优先级最高），或写
+  `~/.mnemon/doctor.json`：`{ "inject": true }` / `{ "inject": false }`。
+
+> 记忆文件是同一份（`~/.mnemon/runtime/MEMORY.md`、`USER.md`），所以替换时内容不用迁移。
 
 ## 功能
 
@@ -47,6 +56,12 @@ dsh plugin add dsh-memory-doctor
 - 没有 pnpm 也行：下载仓库 → 把整个文件夹放进 `dsh-home/plugins/` → 重启 DeepWhale Desktop
 - 装好后侧栏出现「记忆体检」图标；命令 `/记忆` 可用
 
+## 测试
+
+```bash
+bash tests/run.sh    # 28 项：拆条目/体检/瘦身备份回滚/记忆包导出导入/注入开关
+```
+
 ## 使用
 
 - 面板：侧栏「记忆体检」图标 → 看用量、勾选、归档、导出
@@ -65,3 +80,10 @@ dsh plugin add dsh-memory-doctor
 ---
 
 [![](https://img.shields.io/badge/powered_by-dwh-005A8C?style=flat&logoColor=white)](https://deepwhale.org.cn)
+
+
+## 更新记录
+
+- **0.1.3**：注入开关改为「自动让位 + doctor.json + 环境变量」三级，和别的记忆插件共存不再重复注入；补 28 项回归测试；清理仓库。
+- 0.1.2：`MEMORY_DOCTOR_INJECT` 开关 + 热记忆注入。
+- 0.1.0：热记忆注入 + 体检 / 瘦身 / 记忆包。

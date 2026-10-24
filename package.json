@@ -1,6 +1,6 @@
 {
   "name": "dsh-memory-doctor",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "深鲸记忆：跨会话热记忆（每轮注入 MEMORY/USER）+ 记忆体检、瘦身归档、记忆包导出导入。本地明文、零依赖、不上传数据。",
   "license": "MIT",
   "type": "module",

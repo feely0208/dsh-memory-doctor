@@ -1,7 +1,7 @@
 {
   "name": "dsh-memory-doctor",
-  "version": "0.3.1",
-  "description": "深鲸记忆：跨会话热记忆（每轮注入 MEMORY/USER）+ 记忆体检、瘦身归档、记忆包导出导入。本地明文、零依赖、不上传数据。",
+  "version": "0.4.0",
+  "description": "深鲸记忆：跨会话热记忆（每轮注入 MEMORY/USER + memory 工具读写）+ 记忆体检、瘦身归档、记忆包、诊断报告、文档只读。本地明文、零依赖、不上传数据。",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -42,5 +42,8 @@
     "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*"
   }
 }

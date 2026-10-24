@@ -171,5 +171,41 @@ console.log('\n  dsh-memory-doctor · 回归');
   });
 }
 
+// ⑦ 写记忆 / 改 / 归档 / 搜 / 文档 / 对比
+{
+  新家();
+  写('MEMORY.md', '已有条目：初始');
+  const a = M.写记忆({ 目标: 'MEMORY.md', 内容: '稳定事实：项目用 Node 24' });
+  检查('写记忆：append ok', () => assert.equal(a.ok, true));
+  检查('写记忆：写入文件', () => assert.match(M.读文件('MEMORY.md'), /Node 24/));
+  检查('写记忆：自动去重', () => assert.equal(M.写记忆({ 内容: '稳定事实：项目用 Node 24' }).说明.includes('已存在'), true));
+  检查('写记忆：先备份', () => assert.ok(M.归档列表().文件.some((f) => f.类型 === '备份')));
+  const b = M.写记忆({ 目标: 'USER.md', 内容: '用户偏好：输出先给结论' });
+  检查('写记忆：USER 目标', () => assert.equal(b.ok, true) && assert.match(M.读文件('USER.md'), /先给结论/));
+  const c = M.改记忆({ 目标: 'MEMORY.md', 旧文本: 'Node 24', 内容: '稳定事实：项目用 Node 24（2026-10）' });
+  检查('改记忆：替换成功', () => assert.equal(c.ok, true) && assert.match(M.读文件('MEMORY.md'), /2026-10/));
+  检查('改记忆：old_text 不唯一时拒绝', () => {
+    M.写记忆({ 内容: '重复定位词 A' }); M.写记忆({ 内容: '重复定位词 B' });
+    assert.equal(M.改记忆({ 旧文本: '重复定位词', 内容: 'x' }).ok, false);
+  });
+  const d = M.归档一条({ 目标: 'MEMORY.md', 旧文本: '重复定位词 A' });
+  检查('归档一条：成功且保留备份', () => assert.equal(d.ok, true) && assert.equal(M.拆条目(M.读文件('MEMORY.md')).some((t) => t.includes('重复定位词 A')), false));
+  检查('搜索：能命中 MEMORY/USER', () => {
+    const r = M.搜记忆('稳定事实');
+    assert.ok(r.length >= 1 && r.some((x) => x.文件 === 'MEMORY.md'));
+  });
+  fs.mkdirSync(path.join(process.env.MEMORY_DOCTOR_HOME, 'documents'), { recursive: true });
+  fs.writeFileSync(path.join(process.env.MEMORY_DOCTOR_HOME, 'documents', '项目.md'), '# 项目文档\n内容', 'utf8');
+  const 文档 = M.文档列表();
+  检查('文档：列出并读取', () => {
+    assert.equal(文档.文件.length, 1);
+    const r = M.读文档('项目.md');
+    assert.match(r.内容, /项目文档/);
+  });
+  检查('文档：目录穿越被拒', () => assert.equal(M.读文档('../MEMORY.md').ok, false));
+  const 对比 = M.对比上次();
+  检查('对比：历史不足时可用=false', () => assert.equal(对比.可用, false));
+}
+
 console.log(`\n  通过 ${pass} · 失败 ${fail}\n`);
 process.exit(fail ? 1 : 0);

@@ -139,5 +139,37 @@ console.log('\n  dsh-memory-doctor · 回归');
   });
 }
 
+// ⑥ 诊断 / 配置 / 诊断报告
+{
+  新家();
+  写('MEMORY.md', '一条稳定事实\n§\n临时：可归档');
+  写('USER.md', '用户画像');
+  const d = M.诊断();
+  检查('诊断：返回插件版本与存储路径', () => {
+    assert.equal(d.插件.名称, 'dsh-memory-doctor');
+    assert.match(d.插件.版本, /^0\./);
+    assert.ok(d.存储.根);
+    assert.ok(d.存储.运行时.路径);
+    assert.equal(typeof d.存储.运行时.文件数, 'number');
+  });
+  检查('诊断：返回注入状态与历史数组', () => {
+    assert.equal(typeof d.注入, 'boolean');
+    assert.ok(Array.isArray(d.历史));
+  });
+  delete process.env.MEMORY_DOCTOR_INJECT;
+  M.写配置({ inject: false });
+  检查('配置：写 false 后读回 false', () => assert.equal(M.读配置().inject, false));
+  检查('配置：注入开关跟随配置', () => assert.equal(M.注入是否开启(), false));
+  M.写配置({ inject: true });
+  检查('配置：写 true 后读回 true', () => assert.equal(M.读配置().inject, true));
+  const 报告 = M.导出诊断报告();
+  检查('报告：生成 Markdown 且含用量/建议', () => {
+    assert.ok(fs.existsSync(报告.路径));
+    const 文 = fs.readFileSync(报告.路径, 'utf8');
+    assert.match(文, /深鲸记忆 · 诊断报告/);
+    assert.match(文, /MEMORY\.md/);
+  });
+}
+
 console.log(`\n  通过 ${pass} · 失败 ${fail}\n`);
 process.exit(fail ? 1 : 0);

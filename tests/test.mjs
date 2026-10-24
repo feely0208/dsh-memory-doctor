@@ -222,5 +222,44 @@ console.log('\n  dsh-memory-doctor · 回归');
   检查('回复入库：写入并去重', () => assert.equal(r.ok, true) && assert.match(M.读文件('MEMORY.md'), /会话回复/));
 }
 
+// ⑨ memories.json 为源：写入/替换/归档都要同步库并重新投影
+{
+  const 家 = 新家();
+  const 库 = { version: 1, entries: [
+    { content: '用户偏好 A', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', target: 'user', importance: 'normal' },
+    { content: '项目事实 B', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', target: 'memory', importance: 'normal' },
+  ]};
+  fs.writeFileSync(path.join(家, 'runtime', 'memories.json'), JSON.stringify(库, null, 2));
+  fs.writeFileSync(path.join(家, 'runtime', 'USER.md'), '用户偏好 A\n');
+  fs.writeFileSync(path.join(家, 'runtime', 'MEMORY.md'), '项目事实 B\n');
+  写('MEMORY.md', '');
+  const r1 = M.写记忆({ 内容: '项目事实 C' });
+  检查('库：append 写入 memories.json', () => {
+    assert.equal(r1.ok, true);
+    const 新库 = JSON.parse(fs.readFileSync(path.join(家, 'runtime', 'memories.json'), 'utf8'));
+    assert.equal(新库.entries.length, 3);
+    assert.ok(新库.entries.some((e) => e.content.includes('项目事实 C')));
+  });
+  检查('库：append 后 md 被重新投影', () => assert.match(M.读文件('MEMORY.md'), /项目事实 C/));
+  检查('库：改记忆同步更新库', () => {
+    assert.equal(M.改记忆({ 旧文本: '项目事实 C', 内容: '项目事实 C（修订）' }).ok, true);
+    const 新库 = JSON.parse(fs.readFileSync(path.join(家, 'runtime', 'memories.json'), 'utf8'));
+    assert.ok(新库.entries.some((e) => e.content.includes('修订')));
+    assert.match(M.读文件('MEMORY.md'), /修订/);
+  });
+  检查('库：归档一条从库中移除', () => {
+    assert.equal(M.归档一条({ 旧文本: '项目事实 C（修订）' }).ok, true);
+    const 新库 = JSON.parse(fs.readFileSync(path.join(家, 'runtime', 'memories.json'), 'utf8'));
+    assert.equal(新库.entries.some((e) => e.content.includes('项目事实 C')), false);
+  });
+  检查('库：同步记忆库补缺失条目', () => {
+    写('USER.md', '用户偏好 A\n§\n用户偏好 D\n');
+    const r = M.同步记忆库();
+    assert.equal(r.ok, true);
+    assert.ok(r.新增 >= 1);
+    assert.match(M.读文件('USER.md'), /用户偏好 D/);
+  });
+}
+
 console.log(`\n  通过 ${pass} · 失败 ${fail}\n`);
 process.exit(fail ? 1 : 0);

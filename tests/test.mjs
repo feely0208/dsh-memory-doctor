@@ -207,5 +207,20 @@ console.log('\n  dsh-memory-doctor · 回归');
   检查('对比：历史不足时可用=false', () => assert.equal(对比.可用, false));
 }
 
+// ⑧ 会话回复存入记忆（提取文本）
+{
+  const events = [
+    { type: 'assistant/message', data: { message: { id: 'm1', content: [{ type: 'reasoning', text: '想' }, { type: 'text', text: '第一段' }, { type: 'text', text: '第二段' }] } } },
+    { type: 'assistant/message', data: { message: { id: 'm2', content: [{ type: 'reasoning', text: '只有推理' }] } } },
+  ];
+  检查('回复提取：拼接 text 块', () => assert.equal(M.提取回复文本(events, 'm1'), '第一段\n\n第二段'));
+  检查('回复提取：只有 reasoning 返回 null', () => assert.equal(M.提取回复文本(events, 'm2'), null));
+  检查('回复提取：未知 id 返回 null', () => assert.equal(M.提取回复文本(events, 'nope'), null));
+  新家();
+  写('MEMORY.md', '已有条目');
+  const r = M.写记忆({ 内容: '会话回复（2026-10-24）：把这段回复存进记忆' });
+  检查('回复入库：写入并去重', () => assert.equal(r.ok, true) && assert.match(M.读文件('MEMORY.md'), /会话回复/));
+}
+
 console.log(`\n  通过 ${pass} · 失败 ${fail}\n`);
 process.exit(fail ? 1 : 0);

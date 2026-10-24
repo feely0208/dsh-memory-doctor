@@ -71,6 +71,24 @@ console.log('\n  dsh-memory-doctor · 回归');
   assert.ok(d);
 }
 
+// ④ 归档列表 + 恢复（备份可回滚）
+{
+  新家();
+  写('MEMORY.md', '稳定事实 A\n§\n临时：该归档\n§\n稳定事实 B');
+  const r = M.瘦身({ 文件: 'MEMORY.md', 序号们: [2], 确认: true });
+  const 列表 = M.归档列表();
+  检查('归档：列表包含刚生成的备份与归档文件', () => {
+    assert.ok(列表.文件.length >= 2);
+    assert.ok(列表.文件.some((f) => f.类型 === '备份'));
+    assert.ok(列表.文件.some((f) => f.类型 === '归档条目'));
+  });
+  检查('恢复：未确认时拒绝', () => assert.equal(M.恢复归档({ 归档文件名: path.basename(r.备份), 文件: 'MEMORY.md' }).ok, false));
+  const 恢复 = M.恢复归档({ 归档文件名: path.basename(r.备份), 文件: 'MEMORY.md', 确认: true });
+  检查('恢复：确认后 ok', () => assert.equal(恢复.ok, true));
+  检查('恢复：内容回到瘦身前', () => assert.match(M.读文件('MEMORY.md'), /临时：该归档/));
+  检查('恢复：恢复前自动另存', () => assert.ok(M.归档列表().文件.some((f) => f.类型 === '备份' && f.名.includes('恢复前'))));
+}
+
 // ④ 记忆包：导出 → 新环境导入（去重、不覆盖）
 {
   const 老家 = 新家();

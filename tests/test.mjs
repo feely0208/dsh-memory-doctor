@@ -204,7 +204,7 @@ console.log('\n  dsh-memory-doctor · 回归');
   });
   检查('文档：目录穿越被拒', () => assert.equal(M.读文档('../MEMORY.md').ok, false));
   const 对比 = M.对比上次();
-  检查('对比：历史不足时可用=false', () => assert.equal(对比.可用, false));
+  检查('对比：有历史时可对比', () => { assert.equal(对比.可用, true); assert.ok(Array.isArray(对比.新增)); });
 }
 
 // ⑧ 会话回复存入记忆（提取文本）

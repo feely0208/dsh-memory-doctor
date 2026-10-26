@@ -261,5 +261,102 @@ console.log('\n  dsh-memory-doctor · 回归');
   });
 }
 
+
+// ⑦ 自动压缩（0.5.7）：到阈值自己动手，可回滚
+{
+  const 家 = 新家();
+  const 字节数 = (x) => Buffer.byteLength(String(x), 'utf8');
+  const 造条 = (i) => `第${i}条项目事实：${'细节'.repeat(75)}。`;
+  const 造满 = (n) => Array.from({ length: n }, (_, i) => 造条(i + 1));
+
+  // 未到阈值：不触发
+  {
+    写('MEMORY.md', 造满(2).join('\n§\n') + '\n');
+    const r = M.自动压缩({});
+    检查('自动压缩：未到阈值不触发', () => {
+      assert.equal(r.触发, false);
+      assert.equal(字节数(M.读文件('MEMORY.md')), r.之前字节);
+    });
+  }
+
+  // 到阈值：触发，归档临时条目 + 长条压成首句
+  {
+    写('MEMORY.md', [...造满(18), '临时：正在调试自动压缩，稍后删掉'].join('\n§\n') + '\n');
+    const 前 = 字节数(M.读文件('MEMORY.md'));
+    const r = M.自动压缩({});
+    检查('自动压缩：到阈值触发', () => {
+      assert.equal(r.触发, true);
+      assert.ok(r.动作.length > 0);
+      assert.ok(r.之后字节 < 前);
+      assert.ok(r.之后字节 <= 10240 * 0.8, `压后仍 ${r.之后字节} 字节`);
+    });
+    检查('自动压缩：临时条目被归档、正文里不再出现', () => {
+      assert.equal(M.读文件('MEMORY.md').includes('稍后删掉'), false);
+      const 归档 = fs.readFileSync(path.join(家, 'runtime', 'archived', path.basename(r.存档), '归档条目.md'), 'utf8');
+      assert.match(归档, /稍后删掉/);
+    });
+    检查('自动压缩：压缩前整份存档（可回滚）', () => {
+      const 存 = path.join(家, 'runtime', 'archived', path.basename(r.存档), 'MEMORY.md');
+      assert.equal(字节数(fs.readFileSync(存, 'utf8')), 前);
+    });
+    检查('自动压缩：关键事实仍在（长条压成首句而非删除）', () => {
+      assert.match(M.读文件('MEMORY.md'), /第1条项目事实/);
+      assert.ok(M.拆条目(M.读文件('MEMORY.md')).length >= 3);
+    });
+  }
+
+  // 写入路径自动触发：写之前就发现到阈值
+  {
+    新家();
+    写('MEMORY.md', 造满(18).join('\n§\n') + '\n');
+    const r = M.写记忆({ 目标: 'MEMORY.md', 内容: '新增：写入时的自动压缩触发验证' });
+    检查('自动压缩：写记忆时自动触发并成功写入', () => {
+      assert.equal(r.ok, true);
+      assert.ok(r.自动压缩 && r.自动压缩.触发, '写记忆返回值应带自动压缩报告');
+      assert.match(M.读文件('MEMORY.md'), /写入时的自动压缩触发验证/);
+    });
+  }
+
+  // 库是源：压缩后 md 与 memories.json 条数一致
+  {
+    新家();
+    写('MEMORY.md', 造满(18).join('\n§\n') + '\n');
+    const 条 = M.拆条目(M.读文件('MEMORY.md'));
+    fs.writeFileSync(
+      path.join(家, 'runtime', 'memories.json'),
+      JSON.stringify({ version: 1, entries: 条.map((c) => ({ content: c, created_at: '2026-10-01T00:00:00.000Z', updated_at: '2026-10-01T00:00:00.000Z', target: 'memory', importance: 'normal' })) }, null, 2),
+      'utf8',
+    );
+    const r = M.自动压缩({});
+    const 库 = JSON.parse(fs.readFileSync(path.join(家, 'runtime', 'memories.json'), 'utf8'));
+    检查('自动压缩：库与投影同步（条数一致）', () => {
+      assert.equal(r.触发, true);
+      assert.equal(库.entries.filter((e) => e.target === 'memory').length, M.拆条目(M.读文件('MEMORY.md')).length);
+      assert.equal(M.拆条目(M.读文件('MEMORY.md')).length, 库.entries.length);
+    });
+  }
+}
+
+
+// ⑧ 临时条目判定精度：只看开头 40 字（2026-10-26 误报修复）
+{
+  新家();
+  const 规则 = '记忆预算规则：MEMORY.md 每轮全文注入且上限 10KB，到 80% 会自动归档临时/阶段性条目，别误判';
+  写('MEMORY.md', ['临时：正在调试，回头删', 规则].join('\n§\n') + '\n');
+  const r = M.体检();
+  检查('体检：规则说明里靠后的「临时」不算临时条目（只看开头 40 字）', () => {
+    assert.equal(r.摘要.标记计数['可归档(临时/进度类)'], 1);
+  });
+  检查('自动压缩：只归档开头就是临时/进度类的条目', () => {
+    const 满 = [规则];
+    for (let i = 0; i < 17; i++) 满.push('第' + i + '条项目事实：' + '细节'.repeat(75) + '。');
+    写('MEMORY.md', 满.join('\n§\n') + '\n');
+    const c = M.自动压缩({});
+    assert.equal(c.触发, true);
+    assert.match(M.读文件('MEMORY.md'), /记忆预算规则/);
+    assert.equal(M.读文件('MEMORY.md').includes('回头删'), false);
+  });
+}
+
 console.log(`\n  通过 ${pass} · 失败 ${fail}\n`);
 process.exit(fail ? 1 : 0);

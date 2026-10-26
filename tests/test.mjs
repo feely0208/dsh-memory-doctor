@@ -358,5 +358,62 @@ console.log('\n  dsh-memory-doctor · 回归');
   });
 }
 
+
+// ⑨ 建议分级 + 忽略（0.5.8）
+{
+  新家();
+  const 长条 = '项目事实：' + '细节'.repeat(1000) + '。'; // ~3000 字节？
+
+  // 88% 用量：只进提示，不进警告
+  // 注意：中文字符 3 字节，1000 字≈3000 字节 → 3000+3000+2790≈8790/10240≈86%
+  写('MEMORY.md', ['甲'.repeat(1000), '乙'.repeat(1000), '丙'.repeat(930)].join('\n§\n') + '\n');
+  const r1 = M.体检();
+  检查('分级：>85% 只进提示，不进警告', () => {
+    assert.equal(r1.警告.length, 0);
+    assert.ok(r1.提示.some((s) => /已用/.test(s)), '提示里应有用量提醒');
+  });
+
+  // 完全重复：进警告
+  新家();
+  写('MEMORY.md', ['重复条目：这是一段超过四十字节的完全相同内容，用来验证重复判定。', '重复条目：这是一段超过四十字节的完全相同内容，用来验证重复判定。'].join('\n§\n') + '\n');
+  const r2 = M.体检();
+  检查('分级：完全重复进警告', () => {
+    assert.ok(r2.警告.some((s) => /完全重复/.test(s)));
+    assert.equal(r2.提示.length, 0);
+  });
+
+  // 超上限：进警告
+  新家();
+  写('MEMORY.md', '超'.repeat(11000));
+  const r3 = M.体检();
+  检查('分级：超过上限进警告（写入会被拒）', () => {
+    assert.ok(r3.警告.some((s) => /超上限/.test(s)));
+  });
+
+  // 忽略：完全重复 2 条 → 忽略一条后不再报
+  新家();
+  写('MEMORY.md', ['重复条目：这是一段超过四十字节的完全相同内容，用来验证重复判定。', '重复条目：这是一段超过四十字节的完全相同内容，用来验证重复判定。'].join('\n§\n') + '\n');
+  const before = M.体检();
+  const 指纹 = before.条目[0].指纹;
+  const ig = M.设忽略({ 指纹 });
+  检查('忽略：写入忽略列表', () => {
+    assert.equal(ig.ok, true);
+    assert.ok(M.读忽略().includes(指纹));
+  });
+  检查('忽略：忽略后重复不再进警告', () => {
+    const after = M.体检();
+    assert.equal(after.警告.length, 0);
+    // 两条内容完全相同的条目共用一个指纹，忽略一条即同时忽略（去重的语义就是"这段内容别再提"）
+    assert.equal(after.摘要.已忽略, 2);
+    assert.equal(after.条目[0].已忽略, true);
+  });
+  检查('忽略：恢复后重新参与体检', () => {
+    M.设忽略({ 指纹, 恢复: true });
+    const again = M.体检();
+    assert.ok(again.警告.some((s) => /完全重复/.test(s)));
+    assert.equal(again.摘要.已忽略, 0);
+  });
+}
+
 console.log(`\n  通过 ${pass} · 失败 ${fail}\n`);
 process.exit(fail ? 1 : 0);

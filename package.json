@@ -13,8 +13,7 @@
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
-    "scripts",
-    "tests"
+    "scripts"
   ],
   "engines": {
     "dsh": ">=0.1.0-rc.6 <0.3.0",

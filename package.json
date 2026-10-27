@@ -1,6 +1,6 @@
 {
   "name": "dsh-memory-doctor",
-  "version": "0.5.9",
+  "version": "0.5.10",
   "description": "深鲸记忆：跨会话热记忆（每轮注入 MEMORY/USER + memory 工具读写）+ 记忆体检、瘦身归档、记忆包、诊断报告、文档只读。本地明文、零依赖、不上传数据。",
   "license": "MIT",
   "type": "module",
@@ -12,7 +12,9 @@
     "assets",
     "cordis.patch.yml",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts",
+    "tests"
   ],
   "engines": {
     "dsh": ">=0.1.0-rc.6 <0.3.0",
@@ -44,5 +46,16 @@
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "*"
-  }
+  },
+  "scripts": {
+    "prepublishOnly": "node scripts/preflight-client.mjs .",
+    "preflight": "node scripts/preflight-client.mjs .",
+    "test": "bash tests/run.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/feely0208/dsh-memory-doctor.git"
+  },
+  "homepage": "https://deepwhale.org.cn/plugins.html",
+  "author": "温州深鲸智能科技有限公司 <contact@deepwhale.org.cn>"
 }

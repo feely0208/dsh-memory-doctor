@@ -54,7 +54,7 @@
 ## 安装
 
 ```bash
-dsh plugin add dsh-memory-doctor
+dsh plugin --profile web add dsh-memory-doctor
 ```
 
 - 面板安装需要本机有 `pnpm`（DSH 的安装器依赖它）

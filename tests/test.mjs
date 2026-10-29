@@ -415,5 +415,250 @@ console.log('\n  dsh-memory-doctor · 回归');
   });
 }
 
+// ⑩ 四层压缩管线（0.5.11）：L1 无损折叠 / L2 落盘 / L3 软压力 / L4 摘要 + 谱系/恢复
+// 全部离线：不调 LLM、不联网、不依赖宿主（L4 用注入的假摘要器）
+{
+  const 字节数 = (x) => Buffer.byteLength(String(x), 'utf8');
+
+  // L1 纯函数：折叠可逆
+  {
+    新家();
+    const 行 = '同一行重复内容：' + '配置'.repeat(60);
+    const 原 = ['开头', 行, 行, 行, 行, '结尾'].join('\n');
+    const r = M.折叠重复行(原);
+    检查('L1 折叠：连续重复行 ≥3 折叠成一行标记', () => {
+      assert.equal(r.逆变换.length, 1);
+      assert.equal(r.逆变换[0].次数, 4);
+      assert.ok(r.省下 > 0);
+    });
+    检查('L1 折叠：逆变换逐字节还原原文', () => assert.equal(M.还原折叠(r.文本, r.逆变换), 原));
+    检查('L1 折叠：省不下字节（短行/只重复 2 次）时不折', () => {
+      assert.equal(M.折叠重复行('短行\n短行\n短行').逆变换.length, 0);
+      assert.equal(M.折叠重复行('这是比较长的一行内容\n这是比较长的一行内容').逆变换.length, 0);
+    });
+    检查('L1 折叠：多条记录的标记互不串（同前缀不同行也能各自还原）', () => {
+      const 前缀 = '超长前缀相同的一行：';
+      const 甲 = 前缀 + 'A'.repeat(100), 乙 = 前缀 + 'B'.repeat(100);
+      const 甲文 = Array.from({ length: 4 }, () => 甲).join('\n');
+      const 乙文 = Array.from({ length: 5 }, () => 乙).join('\n');
+      const ra = M.折叠重复行(甲文), rb = M.折叠重复行(乙文);
+      const 全部 = [...ra.逆变换, ...rb.逆变换];
+      assert.equal(M.还原折叠(ra.文本, 全部), 甲文);
+      assert.equal(M.还原折叠(rb.文本, 全部), 乙文);
+    });
+  }
+
+  // L2 纯函数：超大内容落盘（头 + 尾 + 路径 + SHA256）
+  {
+    新家();
+    const 大 = '开头摘要' + '内容'.repeat(1000) + '结尾收束';
+    const r = M.落盘超大(大, { 路径: 'archived/自动压缩-x/落盘/条目-1.md' });
+    检查('L2 落盘：超过阈值触发且变短', () => {
+      assert.equal(r.触发, true);
+      assert.ok(r.省下 > 0);
+      assert.ok(字节数(r.文本) < 字节数(大));
+      assert.ok(r.文本.startsWith('开头摘要'));
+      assert.ok(r.文本.endsWith('结尾收束'));
+      assert.match(r.文本, /全文已落盘 archived\/自动压缩-x\/落盘\/条目-1\.md/);
+      assert.match(r.文本, /sha256 [0-9a-f]{64}/);
+    });
+    检查('L2 落盘：SHA256 可校验，篡改即失败', () => {
+      assert.equal(M.校验落盘(大, r.sha256), true);
+      assert.equal(M.校验落盘(大 + 'x', r.sha256), false);
+    });
+    检查('L2 落盘：短内容不落盘', () => assert.equal(M.落盘超大('短内容', { 路径: 'x' }).触发, false));
+  }
+
+  // L3 软压力：70% 只提醒不改内容 / 80% 才驱逐
+  {
+    新家();
+    检查('L3 软压力：70% 提醒、80% 驱逐、以下不打扰', () => {
+      assert.equal(M.软压力量级(5000, 10240).级别, 'ok');
+      assert.equal(M.软压力量级(7200, 10240).级别, '提醒');
+      assert.equal(M.软压力量级(8500, 10240).级别, '驱逐');
+      assert.match(M.软压力量级(7200, 10240).提示, /软压力线/);
+    });
+    写('MEMORY.md', '甲'.repeat(2400)); // 72%
+    const 原 = M.读文件('MEMORY.md');
+    const r = M.自动压缩({});
+    检查('L3 软压力：70%~80% 不触发、只给提醒，文件未动', () => {
+      assert.equal(r.触发, false);
+      assert.match(r.说明, /软压力线/);
+      assert.equal(M.读文件('MEMORY.md'), 原);
+    });
+    检查('L3 软压力：体检在 70% 起给提示（不升警告）', () => {
+      const t = M.体检();
+      assert.ok(t.提示.some((s) => /软压力线/.test(s)));
+      assert.equal(t.警告.length, 0);
+    });
+  }
+
+  // L3 驱逐：临时/进度类 → 可重放指针 → 超长首句化
+  {
+    const 家 = 新家();
+    const 造条 = (i) => `第${i}条项目事实：${'细节'.repeat(75)}。`;
+    const 条目 = [
+      '临时：正在调试四层压缩，回头删',
+      '旧条目（全文见 archived/自动压缩-2026-01-01/条目.md）',
+      ...Array.from({ length: 18 }, (_, i) => 造条(i + 1)),
+    ];
+    写('MEMORY.md', 条目.join('\n§\n') + '\n');
+    const 前 = 字节数(M.读文件('MEMORY.md'));
+    const r = M.自动压缩({});
+    检查('L3 驱逐：到 80% 触发，归档临时类与可重放指针', () => {
+      assert.equal(r.触发, true);
+      const 归档动作 = r.动作.filter((a) => a.类型 === '归档');
+      assert.ok(归档动作.some((a) => a.优先级 === 0), '应归档临时条目');
+      assert.ok(归档动作.some((a) => a.优先级 === 1), '应归档可重放指针');
+    });
+    检查('L3 驱逐：归档内容可从 归档条目.md 取回', () => {
+      const 文 = fs.readFileSync(path.join(家, 'runtime', 'archived', path.basename(r.存档), '归档条目.md'), 'utf8');
+      assert.match(文, /正在调试四层压缩/);
+      assert.match(文, /全文见 archived/);
+    });
+    检查('L3 驱逐：压回 80% 以下，原文仍在存档', () => {
+      assert.ok(r.之后字节 < 前);
+      assert.ok(r.之后字节 <= 10240 * 0.8);
+    });
+  }
+
+  // L1+L2 管线内生效：逆变换/落盘文件/层快照/谱系齐全
+  {
+    const 家 = 新家();
+    const 行 = '同一行重复内容：' + '配置'.repeat(60);
+    const 折叠条 = Array.from({ length: 6 }, () => 行).join('\n');
+    const 造条 = (i) => `第${i}条项目事实：${'细节'.repeat(75)}。`;
+    写('MEMORY.md', [折叠条, ...Array.from({ length: 18 }, (_, i) => 造条(i + 1))].join('\n§\n') + '\n');
+    const r = M.自动压缩({});
+    const 存档 = path.join(家, 'runtime', 'archived', path.basename(r.存档));
+    检查('管线 L1：折叠动作进报告与逆变换.json', () => {
+      assert.equal(r.动作.some((a) => a.类型 === '无损折叠'), true);
+      const 逆 = JSON.parse(fs.readFileSync(path.join(存档, '逆变换.json'), 'utf8'));
+      assert.ok(逆.L1.length >= 1);
+      assert.equal(M.还原折叠(逆.L1[0].标记, 逆.L1), Array.from({ length: 6 }, () => 行).join('\n')); // 单个标记还原成原 6 行
+      // 折叠后的条目仍含独有信息，L3 不能把它当「可重放指针」整条驱逐
+      assert.match(M.读文件('MEMORY.md'), /⟦dsh-fold-/);
+    });
+    检查('管线：谱系.json 记录四层状态 + 逐层快照', () => {
+      const 谱系 = JSON.parse(fs.readFileSync(path.join(存档, '谱系.json'), 'utf8'));
+      assert.deepEqual(谱系.层.map((x) => x.层), ['L1 无损折叠', 'L2 落盘', 'L3 软压力', 'L4 LLM 摘要']);
+      assert.equal(谱系.层[0].状态, 'ok');
+      const 快照 = fs.readdirSync(path.join(存档, '层快照'));
+      assert.ok(快照.length >= 3);
+      assert.equal(fs.existsSync(path.join(存档, '层快照', '0-原始.md')), true);
+    });
+    检查('管线：压缩谱系可列出本次存档', () => {
+      const 谱 = M.压缩谱系();
+      assert.equal(谱.ok, true);
+      assert.ok(谱.存档.some((x) => x.存档 === path.basename(r.存档)));
+    });
+  }
+
+  // L2 管线内生效：两条超大条目落盘 + SHA256 校验
+  {
+    const 家 = 新家();
+    const 大1 = '条目甲：' + '甲'.repeat(1660) + '。';
+    const 大2 = '条目乙：' + '乙'.repeat(1425) + '。';
+    写('MEMORY.md', [大1, 大2].join('\n§\n') + '\n');
+    const r = M.自动压缩({});
+    const 存档 = path.join(家, 'runtime', 'archived', path.basename(r.存档));
+    检查('管线 L2：超大条目落盘，上下文留头尾+路径+SHA256', () => {
+      assert.equal(r.动作.filter((a) => a.类型 === '落盘').length, 2);
+      assert.equal(fs.existsSync(path.join(存档, '落盘', '条目-1.md')), true);
+      assert.equal(fs.readFileSync(path.join(存档, '落盘', '条目-1.md'), 'utf8'), 大1);
+      assert.match(M.读文件('MEMORY.md'), /全文已落盘 archived\/自动压缩-.*\/落盘\/条目-1\.md/);
+    });
+    检查('管线 L2：校验压缩报告完整可恢复', () => {
+      const v = M.校验压缩({ 存档文件名: path.basename(r.存档) });
+      assert.equal(v.ok, true);
+      assert.equal(v.可恢复, true);
+    });
+    检查('管线 L2：落盘文件被篡改 → 校验失败', () => {
+      const p = path.join(存档, '落盘', '条目-1.md');
+      fs.appendFileSync(p, 'x');
+      const v = M.校验压缩({ 存档文件名: path.basename(r.存档) });
+      assert.equal(v.可恢复, false);
+      assert.ok(v.检查.some((x) => x.ok === false && /SHA256/.test(x.说明)));
+    });
+  }
+
+  // L4：到摘要线才跑；未注入/抛错/返回空 → 降级不阻断、原文不动
+  {
+    const 造大条 = (i) => `第${i}条项目事实：${'甲'.repeat(1080)}。`;
+    const 造满3 = () => [造大条(1), 造大条(2), 造大条(3)].join('\n§\n') + '\n';
+
+    新家();
+    写('MEMORY.md', 造满3());
+    const 前 = 字节数(M.读文件('MEMORY.md'));
+    const 无 = M.自动压缩({});
+    检查('L4 摘要：未注入摘要器 → 跳过（不调 LLM），文件不动', () => {
+      assert.equal(无.触发, true);
+      assert.equal(无.动作.length, 0);
+      assert.match(无.说明, /未注入摘要器/);
+      assert.equal(字节数(M.读文件('MEMORY.md')), 前);
+      const 谱系 = JSON.parse(fs.readFileSync(path.join(无.存档, '谱系.json'), 'utf8'));
+      assert.equal(谱系.层.find((x) => x.层.startsWith('L4')).状态, '跳过');
+    });
+
+    新家();
+    写('MEMORY.md', 造满3());
+    const 抛 = M.自动压缩({ 摘要器: () => { throw new Error('模型超时'); } });
+    检查('L4 摘要：摘要器抛错 → 本层降级，不阻断、原文不动', () => {
+      assert.equal(抛.动作.length, 0);
+      assert.equal(字节数(M.读文件('MEMORY.md')), 前);
+      const 谱系 = JSON.parse(fs.readFileSync(path.join(抛.存档, '谱系.json'), 'utf8'));
+      assert.equal(谱系.层.find((x) => x.层.startsWith('L4')).状态, '降级');
+    });
+
+    新家();
+    写('MEMORY.md', 造满3());
+    const 空 = M.自动压缩({ 摘要器: () => '' });
+    检查('L4 摘要：返回空 → 降级，不写空摘要', () => {
+      assert.equal(空.动作.length, 0);
+      assert.equal(字节数(M.读文件('MEMORY.md')), 前);
+    });
+  }
+
+  // L4：注入假摘要器 → 预算内摘要 + 摘要前全量存档 + 可整份恢复
+  {
+    const 家 = 新家();
+    const 造大条 = (i) => `第${i}条项目事实：${'甲'.repeat(1080)}。`;
+    const 原文 = [造大条(1), 造大条(2), 造大条(3)].join('\n§\n') + '\n';
+    写('MEMORY.md', 原文);
+    const 前 = 字节数(M.读文件('MEMORY.md'));
+    let 收到预算 = 0;
+    const r = M.自动压缩({
+      摘要器: (候选, { 预算 }) => { 收到预算 = 预算; return `合并 ${候选.length} 条：` + '要点。'.repeat(40); },
+    });
+    const 存档 = path.join(家, 'runtime', 'archived', path.basename(r.存档));
+    检查('L4 摘要：到 90% 且注入摘要器才执行', () => {
+      assert.equal(r.触发, true);
+      assert.ok(r.动作.some((a) => a.类型 === '摘要'));
+      assert.match(M.读文件('MEMORY.md'), /【摘要】/);
+      assert.ok(字节数(M.读文件('MEMORY.md')) < 前);
+    });
+    检查('L4 摘要：预算预留生效（摘要上限 = 15% 上限）', () => {
+      assert.equal(收到预算, 1536);
+      const 摘要条 = M.拆条目(M.读文件('MEMORY.md')).find((t) => t.startsWith('【摘要】'));
+      assert.ok(字节数(摘要条) <= 1536);
+    });
+    检查('L4 摘要：摘要前全量存档 + 最新条目保留', () => {
+      assert.equal(fs.readFileSync(path.join(存档, '摘要前-MEMORY.md'), 'utf8'), 原文);
+      assert.match(M.读文件('MEMORY.md'), /第3条项目事实/);
+    });
+    检查('L4 摘要：校验压缩 OK，可整份回滚', () => {
+      const v = M.校验压缩({ 存档文件名: path.basename(r.存档) });
+      assert.equal(v.可恢复, true);
+      const 未确认 = M.恢复压缩({ 存档文件名: path.basename(r.存档) });
+      assert.equal(未确认.ok, false);
+      const 恢复 = M.恢复压缩({ 存档文件名: path.basename(r.存档), 确认: true });
+      assert.equal(恢复.ok, true);
+      assert.equal(字节数(M.读文件('MEMORY.md')), 前);
+      assert.equal(fs.readFileSync(path.join(家, 'runtime', 'MEMORY.md'), 'utf8'), 原文);
+      assert.equal(fs.existsSync(恢复.备份), true);
+    });
+  }
+}
+
 console.log(`\n  通过 ${pass} · 失败 ${fail}\n`);
 process.exit(fail ? 1 : 0);

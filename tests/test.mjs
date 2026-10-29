@@ -415,5 +415,28 @@ console.log('\n  dsh-memory-doctor · 回归');
   });
 }
 
+// ⑦ 趋势图 / 实时曲线（2026-10-28：历史字节键写错导致曲线恒 0）
+{
+  const 客户端 = fs.readFileSync(path.join(包根, 'lib/client.js'), 'utf8');
+  const 宿主 = fs.readFileSync(path.join(包根, 'lib/index.js'), 'utf8');
+  检查('历史字节键已定义（MEMORY字节 / USER字节）', () => {
+    assert.match(客户端, /const 字节键 =/);
+  });
+  检查('折线点按字节键取数（不再按文件名取，避免恒 0）', () => {
+    assert.match(客户端, /百分比\(h\[字节键\(文件\)\]/);
+  });
+  检查('迷你趋势取最后一条的字节字段', () => {
+    assert.match(客户端, /const 最后字节 = 最后\[字节键\(文件\)\]/);
+  });
+  检查('实时曲线组件已接入面板', () => {
+    assert.match(客户端, /dmd-live/);
+    assert.match(客户端, /\/live/);
+  });
+  检查('宿主提供 /api/live 实时采样', () => {
+    assert.match(宿主, /api\/live/);
+    assert.match(宿主, /statSync\(join\(运行时目录\(\), 名\)\)/);
+  });
+}
+
 console.log(`\n  通过 ${pass} · 失败 ${fail}\n`);
 process.exit(fail ? 1 : 0);

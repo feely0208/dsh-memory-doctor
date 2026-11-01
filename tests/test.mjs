@@ -683,5 +683,81 @@ console.log('\n  dsh-memory-doctor · 回归');
   });
 }
 
+// ⑧ 工作项（2026-11-01）：工单管「现在」，记忆管「以后」
+{
+  const 家 = 新家();
+  const W = await import(path.join(包根, 'lib/works.js'));
+  const 建 = W.建工作项({ 标题: '发布 1.0.64', 模式: 'observe', 授权依据: '用户 2026-11-01 指令', 计划动作: '构建并发布', 范围: '只动桌面端' });
+  检查('建工作项：observe 模式 + 初始阶段 open', () => {
+    assert.equal(建.ok, true);
+    assert.equal(建.item.mode, 'observe');
+    assert.equal(建.item.stage, 'open');
+  });
+  检查('统计：观察中 1 项', () => assert.equal(W.统计工作项().观察中, 1));
+  检查('确认：observe → auto（阶段不变）', () => {
+    const r = W.确认工作项(建.item.id);
+    assert.equal(r.ok, true);
+    assert.equal(r.item.mode, 'auto');
+    assert.equal(r.item.stage, 'open');
+  });
+  检查('合法迁移：open → working', () => {
+    const r = W.移阶段(建.item.id, 'working', '开工');
+    assert.equal(r.ok, true);
+    assert.equal(r.item.stage, 'working');
+  });
+  检查('非法迁移被拒：working → awaiting-person 可以、但 done→working 不行', () => {
+    const r1 = W.移阶段(建.item.id, 'awaiting-person');
+    assert.equal(r1.ok, true);
+    const r2 = W.移阶段(建.item.id, 'done', '做完');
+    assert.equal(r2.ok, true);
+    const r3 = W.移阶段(建.item.id, 'working');
+    assert.equal(r3.ok, false);
+  });
+  检查('结项带教训 → 自动写入 MEMORY.md', () => {
+    const r = W.建工作项({ 标题: '复查收录', 模式: 'auto' });
+    const 结 = W.结项工作项(r.item.id, { 结果: 'done', 教训: '收录复查结论：先查 api 索引再开浏览器' });
+    assert.equal(结.ok, true);
+    assert.equal(结.item.stage, 'done');
+    assert.ok(结.记忆 && 结.记忆.length > 0, '记忆写入应有返回说明');
+    assert.match(M.读文件('MEMORY.md'), /收录复查结论/);
+  });
+  检查('找不到工作项时给明确错误', () => {
+    const r = W.移阶段('wi-nope', 'working');
+    assert.equal(r.ok, false);
+    assert.match(String(r.错误), /找不到/);
+  });
+  检查('写入会留备份（archived/work-items.*.bak）', () => {
+    const 备份 = fs.readdirSync(path.join(家, 'archived')).filter((n) => n.startsWith('work-items.') && n.endsWith('.bak'));
+    assert.ok(备份.length >= 1, '应有 work-items 备份');
+  });
+  检查('列表只看未结束', () => {
+    const 未结束 = W.列工作项({ 只看未结束: true });
+    assert.equal(未结束.length, 0); // 上面两条都结项了
+  });
+}
+
+// ⑨ 认领（2026-11-01）：没有 owner 的「进行中」是假进度
+{
+  新家();
+  const W = await import(path.join(包根, 'lib/works.js'));
+  const r = W.建工作项({ 标题: '复查市场收录', 模式: 'auto' });
+  检查('新建时没有执行者', () => assert.equal(r.item.owner || '', ''));
+  检查('统计：未认领 1', () => assert.equal(W.统计工作项().未认领, 1));
+  检查('认领：open → working 并写入执行者', () => {
+    const c = W.认领工作项(r.item.id, '自动化会话 1f1c9104');
+    assert.equal(c.ok, true);
+    assert.equal(c.item.owner, '自动化会话 1f1c9104');
+    assert.equal(c.item.stage, 'working');
+    assert.match(String(c.item.history.at(-1).note), /认领/);
+  });
+  检查('认领后不再计入未认领', () => assert.equal(W.统计工作项().未认领, 0));
+  检查('空执行者被拒', () => {
+    const r2 = W.建工作项({ 标题: 'x' });
+    const c2 = W.认领工作项(r2.item.id, '  ');
+    assert.equal(c2.ok, false);
+    assert.match(String(c2.错误), /执行者/);
+  });
+}
+
 console.log(`\n  通过 ${pass} · 失败 ${fail}\n`);
 process.exit(fail ? 1 : 0);

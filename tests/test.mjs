@@ -251,10 +251,10 @@ console.log('\n  dsh-memory-doctor · 回归');
   写('MEMORY.md', '一条稳定事实\n§\n临时：可归档');
   写('USER.md', '用户画像');
   const d = M.诊断();
-  检查('版本：0.6.2（0.6.0 能力跃迁后的小迭代）', () => {
+  检查('版本：诊断与 package.json 一致（不写死，随版本号自动校验）', () => {
     const 包 = JSON.parse(fs.readFileSync(path.join(包根, 'package.json'), 'utf8'));
-    assert.equal(包.version, '0.6.2');
-    assert.equal(d.插件.版本, '0.6.2');
+    assert.ok(/^\d+\.\d+\.\d+$/.test(包.version), 'package.json 版本号格式');
+    assert.equal(d.插件.版本, 包.version);
   });
   检查('诊断：返回插件版本与存储路径', () => {
     assert.equal(d.插件.名称, 'dsh-memory-doctor');

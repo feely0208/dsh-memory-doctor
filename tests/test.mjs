@@ -113,6 +113,112 @@ console.log('\n  dsh-memory-doctor · 回归');
   assert.ok(老家);
 }
 
+// ④b 记忆包 v2（0.6.0）：一次带走 archived/配置 + MANIFEST 校验 + dry-run + 不覆盖
+{
+  const 家 = 新家();
+  写('MEMORY.md', '稳定事实 A\n§\n稳定事实 B');
+  写('USER.md', '用户画像条目');
+  fs.mkdirSync(path.join(家, 'runtime', 'archived', '自动压缩-2026-01-01', '层快照'), { recursive: true });
+  fs.writeFileSync(path.join(家, 'runtime', 'archived', '自动压缩-2026-01-01', '谱系.json'), '{"层":[]}', 'utf8');
+  fs.writeFileSync(path.join(家, 'runtime', 'archived', '自动压缩-2026-01-01', '层快照', '0-原始.md'), '原始\n', 'utf8');
+  fs.writeFileSync(path.join(家, 'doctor.json'), JSON.stringify({ inject: false }), 'utf8');
+  const 导出 = M.导出记忆包();
+  const 包 = 导出.目录;
+  检查('包 v2：导出 MEMORY/USER + archived 谱系 + 配置', () => {
+    assert.ok(fs.existsSync(path.join(包, 'MANIFEST.json')));
+    assert.ok(fs.existsSync(path.join(包, 'archived', '自动压缩-2026-01-01', '谱系.json')));
+    assert.ok(fs.existsSync(path.join(包, 'archived', '自动压缩-2026-01-01', '层快照', '0-原始.md')));
+    assert.ok(fs.existsSync(path.join(包, 'doctor.json')));
+    assert.equal(导出.统计.MEMORY条目, 2);
+    assert.equal(导出.统计.归档文件数, 2);
+  });
+  检查('包 v2：MANIFEST 有每个文件的 sha256 与字节数', () => {
+    const 清单 = JSON.parse(fs.readFileSync(path.join(包, 'MANIFEST.json'), 'utf8'));
+    assert.equal(清单.版本, 2);
+    for (const [相对, 元] of Object.entries(清单.文件)) {
+      assert.match(元.sha256, /^[0-9a-f]{64}$/, 相对);
+      assert.equal(元.字节, fs.statSync(path.join(包, 相对)).size);
+    }
+    assert.equal(清单.文件['MEMORY.md'].条目数, 2);
+  });
+  const 查 = M.检查记忆包({ 目录: 包 });
+  检查('包 v2：校验通过', () => assert.equal(查.可导入, true));
+
+  // 篡改一份副本：sha256 与条目数都必须挡住
+  const 坏包 = fs.mkdtempSync(path.join(os.tmpdir(), 'memory-pack-bad-'));
+  fs.cpSync(包, 坏包, { recursive: true });
+  fs.appendFileSync(path.join(坏包, 'MEMORY.md'), '\n§\n偷偷加的条目', 'utf8');
+  const 坏查 = M.检查记忆包({ 目录: 坏包 });
+  检查('包 v2：文件被篡改 → 校验失败并指出文件', () => {
+    assert.equal(坏查.可导入, false);
+    assert.ok(坏查.不一致.some((x) => x.路径 === 'MEMORY.md'));
+  });
+  检查('包 v2：校验不通过的包拒绝导入、且不写现有记忆', () => {
+    const 原 = M.读文件('MEMORY.md');
+    const r = M.导入记忆包({ 目录: 坏包, 确认: true });
+    assert.equal(r.ok, false);
+    assert.equal(M.读文件('MEMORY.md'), 原);
+  });
+
+  // 换机：新环境默认 dry-run，确认后才落盘，先备份
+  新家();
+  写('MEMORY.md', '本机已有条目');
+  const 预 = M.导入记忆包({ 目录: 包 });
+  检查('包 v2：默认 dry-run 只预览不写', () => {
+    assert.equal(预.ok, false);
+    assert.equal(预.需要确认, true);
+    assert.equal(预.预览.合并['MEMORY.md'].新增, 2);
+    assert.match(M.读文件('MEMORY.md'), /本机已有条目/);
+    assert.equal(M.读文件('MEMORY.md').includes('稳定事实 A'), false);
+  });
+  const 真 = M.导入记忆包({ 目录: 包, 确认: true });
+  检查('包 v2：确认后合并条目', () => {
+    assert.equal(真.ok, true);
+    assert.equal(真.合并['MEMORY.md'].新增, 2);
+    assert.match(M.读文件('MEMORY.md'), /稳定事实 A/);
+    assert.match(M.读文件('MEMORY.md'), /本机已有条目/);
+  });
+  检查('包 v2：落盘前自动备份现有记忆', () => {
+    assert.ok(fs.existsSync(path.join(真.备份, 'MEMORY.md')));
+    assert.match(fs.readFileSync(path.join(真.备份, 'MEMORY.md'), 'utf8'), /本机已有条目/);
+  });
+  检查('包 v2：archived 一起搬过来', () => {
+    assert.equal(真.导入.archived.新增, 2);
+    assert.ok(fs.existsSync(path.join(process.env.MEMORY_DOCTOR_HOME, 'runtime', 'archived', '自动压缩-2026-01-01', '谱系.json')));
+  });
+  检查('包 v2：配置只在没有时导入（不覆盖本机设置）', () => {
+    assert.equal(真.配置.导入, true);
+    assert.equal(M.读配置().inject, false);
+  });
+}
+
+// ④c 旧版记忆包（v1 清单，目录记成 documents/）仍可导入，不因目录条目崩
+{
+  const 旧包 = fs.mkdtempSync(path.join(os.tmpdir(), 'memory-pack-v1-'));
+  fs.writeFileSync(path.join(旧包, 'MEMORY.md'), '旧包条目 A\n', 'utf8');
+  fs.mkdirSync(path.join(旧包, 'documents'), { recursive: true });
+  fs.writeFileSync(path.join(旧包, 'documents', '项目.md'), '# 旧文档\n', 'utf8');
+  fs.writeFileSync(path.join(旧包, 'manifest.json'), JSON.stringify({
+    导出时间: '2026-10-01T00:00:00Z',
+    来源: '/old/home/.mnemon',
+    文件: { 'MEMORY.md': { 字节: Buffer.byteLength('旧包条目 A\n') }, 'documents/': { 字节: 0 } },
+  }), 'utf8');
+  新家();
+  写('MEMORY.md', '本机条目');
+  const 查 = M.检查记忆包({ 目录: 旧包 });
+  检查('包 v1：旧格式清单可识别为旧包且校验通过', () => {
+    assert.equal(查.可导入, true);
+    assert.equal(查.版本, 1);
+  });
+  const r = M.导入记忆包({ 目录: 旧包, 确认: true });
+  检查('包 v1：目录条目不会让导入崩，实际文件照常带过来', () => {
+    assert.equal(r.ok, true);
+    assert.equal(r.合并['MEMORY.md'].新增, 1);
+    assert.equal(r.导入.documents.新增, 1);
+    assert.ok(fs.existsSync(path.join(process.env.MEMORY_DOCTOR_HOME, 'documents', '项目.md')));
+  });
+}
+
 // ⑤ 注入开关：env / doctor.json
 {
   新家();
@@ -145,6 +251,11 @@ console.log('\n  dsh-memory-doctor · 回归');
   写('MEMORY.md', '一条稳定事实\n§\n临时：可归档');
   写('USER.md', '用户画像');
   const d = M.诊断();
+  检查('版本：0.6.0（第一次能力跃迁，中间位进位）', () => {
+    const 包 = JSON.parse(fs.readFileSync(path.join(包根, 'package.json'), 'utf8'));
+    assert.equal(包.version, '0.6.0');
+    assert.equal(d.插件.版本, '0.6.0');
+  });
   检查('诊断：返回插件版本与存储路径', () => {
     assert.equal(d.插件.名称, 'dsh-memory-doctor');
     assert.match(d.插件.版本, /^0\./);
@@ -660,6 +771,191 @@ console.log('\n  dsh-memory-doctor · 回归');
   }
 }
 
+// ⑪ 压缩核对报告（0.6.0）：前后量 + 各层条数 + 抽样对照 + 一行结论
+{
+  const 家 = 新家();
+  const 行 = '同一行重复内容：' + '配置'.repeat(60);
+  const 折叠条 = Array.from({ length: 6 }, () => 行).join('\n');
+  const 造条 = (i) => `第${i}条项目事实：${'细节'.repeat(75)}。`;
+  写('MEMORY.md', [
+    折叠条,
+    '临时：正在调试压缩核对，回头删',
+    ...Array.from({ length: 17 }, (_, i) => 造条(i + 1)),
+  ].join('\n§\n') + '\n');
+  const r = M.自动压缩({});
+  const 存档 = path.join(家, 'runtime', 'archived', path.basename(r.存档));
+  检查('压缩核对：报告文件随存档生成（md + json）', () => {
+    assert.ok(fs.existsSync(path.join(存档, '压缩报告.json')));
+    assert.ok(fs.existsSync(path.join(存档, '压缩报告.md')));
+  });
+  检查('压缩核对：前后条目数/字节/占预算比例', () => {
+    assert.ok(r.核对.前.条目数 > r.核对.后.条目数);
+    assert.ok(r.核对.前.字节 > r.核对.后.字节);
+    assert.equal(r.核对.前.上限, 10240);
+    assert.ok(r.核对.前.百分比 >= 80 && r.核对.后.百分比 <= 80);
+  });
+  检查('压缩核对：各层处理条数可读', () => {
+    assert.ok(r.核对.层计数.折叠 >= 1);
+    assert.ok(r.核对.层计数.归档 >= 1);
+    assert.ok(r.核对.层计数.首句化 >= 1);
+    assert.equal(r.核对.层计数.摘要, 0);
+  });
+  检查('压缩核对：抽样列出原文与处理后内容（5 组）', () => {
+    assert.equal(r.核对.抽样.length, 5);
+    const 折叠 = r.核对.抽样.find((s) => s.层.includes('L1'));
+    assert.ok(折叠, '应包含 L1 折叠对照');
+    assert.match(折叠.原文, /同一行重复内容/);
+    assert.match(折叠.折叠后, /dsh-fold/);
+    for (const s of r.核对.抽样) {
+      assert.equal(typeof s.原文, 'string');
+      assert.equal(typeof s.折叠后, 'string');
+      assert.equal(s.可恢复, true);
+      if (!s.层.includes('归档')) assert.ok(s.原文字节 >= s.折叠后字节, `抽样应显示变短：${s.层}`);
+    }
+  });
+  检查('压缩核对：一行结论带「不可逆项 0 条」', () => {
+    assert.match(r.核对.结论, /不可逆项 0 条/);
+    assert.match(r.核对.结论, /信息保留|有损但可恢复/);
+  });
+  检查('压缩核对：md 报告含抽样对照与结论', () => {
+    const 文 = fs.readFileSync(path.join(存档, '压缩报告.md'), 'utf8');
+    assert.match(文, /抽样对照/);
+    assert.match(文, /原文：/);
+    assert.match(文, /结论/);
+  });
+  检查('压缩核对：可按最近一次读回报告', () => {
+    const 读 = M.压缩报告({ 最近: true });
+    assert.equal(读.ok, true);
+    assert.equal(读.报告.抽样.length, 5);
+    assert.equal(读.存档, path.basename(r.存档));
+  });
+  检查('压缩核对：L4 摘要时结论为「有损但可恢复」', () => {
+    const 大条 = (i) => `第${i}条项目事实：${'甲'.repeat(1080)}。`;
+    写('MEMORY.md', [大条(1), 大条(2), 大条(3)].join('\n§\n') + '\n');
+    const 摘 = M.自动压缩({ 摘要器: () => '要点' + '。'.repeat(40) });
+    assert.match(摘.核对.结论, /有损但可恢复/);
+    assert.match(摘.核对.结论, /摘要前全文/);
+    assert.ok(摘.核对.抽样.some((s) => s.层.includes('L4')));
+  });
+}
+
+// ⑫ 体检给具体动作 + 清理预案（0.6.0）
+{
+  const 家 = 新家();
+  const 重复条 = '项目事实：官网部署前必须先备份线上，再 rsync，否则会静默覆盖（2026-10-12 教训）';
+  写('MEMORY.md', [
+    重复条,
+    重复条,
+    '临时：今天先跑一遍测试，明天再说',
+    '短',
+  ].join('\n§\n'));
+  写('USER.md', '用户偏好：所有产出默认带回链徽章。');
+  const r = M.体检();
+  检查('体检动作：重复条目能定位到两条 + 给合并草案', () => {
+    const 合并 = r.具体建议.find((x) => x.类型 === '合并');
+    assert.ok(合并, '应有合并建议');
+    assert.equal(合并.文件, 'MEMORY.md');
+    assert.equal(合并.序号, 2);
+    assert.equal(合并.配对.序号, 1);
+    assert.match(合并.文本, /#1/);
+    assert.match(合并.文本, /#2/);
+    assert.match(合并.文本, /合并后文案/);
+    assert.ok(合并.合并草案.includes('官网部署前必须先备份线上'), '草案应是保留条的原文');
+    assert.match(合并.理由, /逐字相同/);
+  });
+  检查('体检动作：重复对带相似度与两条摘要', () => {
+    assert.ok(r.重复对.length >= 1);
+    assert.equal(r.重复对[0].相似度, 1);
+    assert.equal(r.重复对[0].a.序号, 1);
+    assert.equal(r.重复对[0].b.序号, 2);
+  });
+  检查('体检动作：临时条目定位到序号并给理由', () => {
+    const 条 = r.具体建议.find((x) => x.类型 === '临时/进度');
+    assert.ok(条);
+    assert.equal(条.文件, 'MEMORY.md');
+    assert.equal(条.序号, 3);
+    assert.match(条.理由, /临时|进度/);
+    assert.match(条.文本, /建议归档/);
+  });
+  检查('体检动作：低信息量定位到序号并说明为什么', () => {
+    const 条 = r.具体建议.find((x) => x.类型 === '低信息量');
+    assert.ok(条);
+    assert.equal(条.序号, 4);
+    assert.match(条.理由, /40 字节/);
+  });
+  检查('体检动作：摘要给出可执行条数与可腾出字节', () => {
+    assert.ok(r.摘要.可执行项 >= 3);
+    assert.ok(r.摘要.可腾出字节 > 0);
+  });
+  assert.ok(家);
+}
+
+// ⑬ 膨胀建议：最占字节前 5 条 + 换算成占上限百分比
+{
+  新家();
+  const 大 = (i) => `第${i}条项目事实：${'细节'.repeat(200)}。`; // 单条约 1200 字节
+  写('MEMORY.md', Array.from({ length: 7 }, (_, i) => 大(i + 1)).join('\n§\n') + '\n');
+  const r = M.体检();
+  检查('体检动作：膨胀给出最占字节前 5 条', () => {
+    const 膨胀 = r.具体建议.filter((x) => x.类型 === '膨胀');
+    assert.equal(膨胀.length, 5);
+    for (const x of 膨胀) {
+      assert.equal(x.文件, 'MEMORY.md');
+      assert.ok(x.序号 >= 1 && x.序号 <= 7);
+      assert.ok(x.可腾出字节 > 0);
+      assert.match(x.文本, /占 \d+ 字节/);
+      assert.match(x.文本, /用量 \d+% → \d+%/);
+    }
+  });
+}
+
+// ⑭ 清理预案：写到待审文件、可追溯到条目、绝不自动删 / 干净记忆 0 误报
+{
+  const 家 = 新家();
+  const 原文 = [
+    '项目事实：官网部署前必须先备份线上，再 rsync，否则会静默覆盖（2026-10-12 教训）',
+    '项目事实：官网部署前必须先备份线上，再 rsync，否则会静默覆盖（2026-10-12 教训）',
+    '临时：今天先跑一遍测试，明天再说',
+    '短',
+  ].join('\n§\n') + '\n';
+  写('MEMORY.md', 原文);
+  const 前 = M.读文件('MEMORY.md');
+  const 预 = M.生成清理预案();
+  检查('清理预案：生成待审文件', () => {
+    assert.equal(预.ok, true);
+    assert.ok(预.条目数 >= 3);
+    assert.ok(fs.existsSync(预.路径));
+    assert.match(预.路径, /清理预案/);
+  });
+  检查('清理预案：每条可追溯到「文件 + 序号」', () => {
+    const 文 = fs.readFileSync(预.路径, 'utf8');
+    assert.match(文, /MEMORY\.md #2/);
+    assert.match(文, /为什么：/);
+    assert.match(文, /合并后文案/);
+  });
+  检查('清理预案：不自动删 / 不执行任何写入', () => {
+    const 文 = fs.readFileSync(预.路径, 'utf8');
+    assert.match(文, /不会自动删除或归档任何东西/);
+    assert.equal(/rm -|unlink|fs\.rm/.test(文), false);
+    assert.equal(M.读文件('MEMORY.md'), 前);
+  });
+  检查('清理预案：干净记忆 0 误报、不生成多余文件', () => {
+    新家();
+    写('MEMORY.md', [
+      '项目事实：官网部署前必须先备份线上再 rsync（长期有效）',
+      '决策理由：关键路径不押第三方，非关键路径可用现成但能接管',
+      '用户偏好：对外产物右下角固定带 powered by dwh 徽章',
+    ].join('\n§\n'));
+    const 干净 = M.体检();
+    assert.equal(干净.具体建议.length, 0);
+    assert.equal(干净.重复对.length, 0);
+    const 空 = M.生成清理预案();
+    assert.equal(空.条目数, 0);
+    assert.equal(空.路径, undefined);
+  });
+  assert.ok(家);
+}
+
 // ⑦ 趋势图 / 实时曲线（2026-10-28：历史字节键写错导致曲线恒 0）
 {
   const 客户端 = fs.readFileSync(path.join(包根, 'lib/client.js'), 'utf8');
@@ -680,6 +976,18 @@ console.log('\n  dsh-memory-doctor · 回归');
   检查('宿主提供 /api/live 实时采样', () => {
     assert.match(宿主, /api\/live/);
     assert.match(宿主, /statSync\(join\(运行时目录\(\), 名\)\)/);
+  });
+  检查('面板接入压缩核对与清理预案', () => {
+    assert.match(客户端, /\/compress-report/);
+    assert.match(客户端, /压缩核对/);
+    assert.match(客户端, /\/cleanup-plan/);
+    assert.match(客户端, /生成清理预案/);
+    assert.match(客户端, /选中这条/);
+    assert.match(客户端, /为什么：/);
+  });
+  检查('宿主提供压缩核对与清理预案接口', () => {
+    assert.match(宿主, /api\/compress-report/);
+    assert.match(宿主, /api\/cleanup-plan/);
   });
 }
 

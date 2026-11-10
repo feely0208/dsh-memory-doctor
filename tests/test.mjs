@@ -251,10 +251,10 @@ console.log('\n  dsh-memory-doctor · 回归');
   写('MEMORY.md', '一条稳定事实\n§\n临时：可归档');
   写('USER.md', '用户画像');
   const d = M.诊断();
-  检查('版本：0.6.0（第一次能力跃迁，中间位进位）', () => {
+  检查('版本：0.6.2（0.6.0 能力跃迁后的小迭代）', () => {
     const 包 = JSON.parse(fs.readFileSync(path.join(包根, 'package.json'), 'utf8'));
-    assert.equal(包.version, '0.6.0');
-    assert.equal(d.插件.版本, '0.6.0');
+    assert.equal(包.version, '0.6.2');
+    assert.equal(d.插件.版本, '0.6.2');
   });
   检查('诊断：返回插件版本与存储路径', () => {
     assert.equal(d.插件.名称, 'dsh-memory-doctor');
@@ -909,6 +909,137 @@ console.log('\n  dsh-memory-doctor · 回归');
   });
 }
 
+// ⑬b 缺口计算（0.6.2）：目标 70%，按字节降序取最少条目
+{
+  检查('缺口：74.9% 时归档 2 条（612 字节）覆盖 504 字节缺口', () => {
+    const p = M.缺口计划({ 用量: 7672, 上限: 10240, 目标: 0.7, 候选们: [{ 字节: 400 }, { 字节: 212 }, { 字节: 100 }] });
+    assert.equal(p.目标字节, 7168);
+    assert.equal(p.缺口字节, 504);
+    assert.equal(p.K, 2);
+    assert.equal(p.合计字节, 612);
+    assert.equal(p.足够, true);
+    assert.equal(p.达标, false);
+    assert.equal(p.归档后字节, 7060);
+    assert.equal(p.归档后百分比, 69);
+    assert.equal(p.条目.length, 2);
+  });
+  检查('缺口：已达标时 K=0、不选任何条目', () => {
+    const p = M.缺口计划({ 用量: 6000, 上限: 10240, 目标: 0.7, 候选们: [{ 字节: 999 }] });
+    assert.equal(p.达标, true);
+    assert.equal(p.缺口字节, 0);
+    assert.equal(p.K, 0);
+    assert.equal(p.合计字节, 0);
+    assert.equal(p.条目.length, 0);
+  });
+  检查('缺口：候选不足时标记「不够覆盖」，不会虚报达标', () => {
+    const p = M.缺口计划({ 用量: 9000, 上限: 10240, 目标: 0.7, 候选们: [{ 字节: 100 }] });
+    assert.equal(p.K, 1);
+    assert.equal(p.足够, false);
+    assert.equal(p.达标, false);
+  });
+}
+
+// ⑬c 同类合并成组 + 批量选中键集合 + 理由分档（0.6.2）
+{
+  新家();
+  const 重复条 = '项目事实：官网部署前必须先备份线上，再 rsync，否则会静默覆盖（2026-10-12 教训）';
+  const 大 = (i) => `第${i}条项目事实：${'细节'.repeat(180)}。`;
+  写('MEMORY.md', [
+    重复条,
+    重复条,
+    '临时：今天先跑一遍测试，明天再说',
+    ...Array.from({ length: 8 }, (_, i) => 大(i + 1)),
+  ].join('\n§\n') + '\n');
+  const r = M.体检();
+  检查('分组：体积类聚成一张卡，重复/临时仍在逐条卡', () => {
+    assert.ok(r.分组.体积['MEMORY.md']);
+    assert.ok(r.分组.体积['MEMORY.md'].条目.length >= 1);
+    assert.ok(r.分组.逐条.some((x) => x.类型 === '合并'));
+    assert.ok(r.分组.逐条.some((x) => x.类型 === '临时/进度'));
+    assert.equal(r.分组.逐条.some((x) => x.类型 === '膨胀'), false);
+  });
+  检查('批量选中：推荐键集合 = 体积组前 K 条，且不混入其他卡片', () => {
+    const g = r.分组.体积['MEMORY.md'];
+    const 键 = new Set(g.推荐.map((x) => x.文件 + '#' + x.序号));
+    assert.equal(键.size, g.K);
+    assert.equal(g.推荐.length, g.K);
+    for (const 逐条 of r.分组.逐条) assert.equal(键.has(`${逐条.文件}#${逐条.序号}`), false);
+  });
+  检查('理由分档：临时进度不能标成「仅体积」', () => {
+    const 临时 = r.分组.逐条.find((x) => x.类型 === '临时/进度');
+    assert.match(临时.理由, /一次性/);
+    assert.equal(/仅体积/.test(临时.理由), false);
+    assert.equal(临时.仅体积, undefined);
+  });
+  检查('理由分档：纯体积项明确「不代表内容该删」', () => {
+    const 膨胀 = r.分组.体积['MEMORY.md'].条目[0];
+    assert.match(膨胀.理由, /仅体积偏大/);
+    assert.match(膨胀.理由, /不代表内容该删/);
+    assert.equal(膨胀.仅体积, true);
+  });
+  检查('建议带条目开头 30 字摘要', () => {
+    for (const x of r.具体建议) {
+      assert.ok(x.摘要30 && x.摘要30.length <= 30, `${x.类型} 缺摘要30`);
+      assert.equal(/\n/.test(x.摘要30), false);
+    }
+    const 临时 = r.分组.逐条.find((x) => x.类型 === '临时/进度');
+    assert.match(临时.摘要30, /^临时：/);
+  });
+  检查('排序：真实垃圾在纯体积之前', () => {
+    const 首位膨胀 = r.具体建议.findIndex((x) => x.类型 === '膨胀');
+    const 末位逐条 = r.具体建议.map((x) => x.类型).lastIndexOf('临时/进度');
+    assert.ok(末位逐条 < 首位膨胀);
+  });
+}
+
+// ⑬d 顶部结论句（0.6.2）：健康 / 未达标 / 驱逐线
+{
+  const 写满到 = (文件, 百分比) => {
+    const 限 = 文件 === 'USER.md' ? 4096 : 10240;
+    const n = Math.floor((限 * 百分比) / 100);
+    写(文件, 'x'.repeat(n));
+  };
+  新家();
+  写满到('MEMORY.md', 67);
+  写满到('USER.md', 69);
+  const r = M.体检();
+  检查('结论句：双文件在目标内时给「状态健康」+ 各自百分比', () => {
+    assert.ok(r.缺口);
+    assert.equal(r.缺口.未达标.length, 0);
+    assert.match(r.缺口.一句话, /状态健康/);
+    assert.match(r.缺口.一句话, /再归档 0 条/);
+    assert.match(r.缺口.一句话, /MEMORY 67%/);
+    assert.match(r.缺口.一句话, /USER 69%/);
+  });
+  新家();
+  写满到('MEMORY.md', 67);
+  写满到('USER.md', 72);
+  const 真机 = M.体检();
+  检查('结论句：MEMORY 67% / USER 72% 时点名 USER 还差几条', () => {
+    assert.deepEqual(真机.缺口.未达标, ['USER.md']);
+    assert.equal(真机.缺口.文件['USER.md'].K, 1);
+    assert.match(真机.缺口.一句话, /USER\.md/);
+    assert.match(真机.缺口.一句话, /再归档 1 条/);
+    assert.match(真机.缺口.一句话, /当前 MEMORY 67% \/ USER 72%/);
+  });
+  新家();
+  写满到('MEMORY.md', 74);
+  const 超 = M.体检();
+  检查('结论句：74% 时直接说「归档几条就够」', () => {
+    assert.match(超.缺口.一句话, /再归档 1 条/);
+    assert.match(超.缺口.一句话, /不用全部处理/);
+    assert.equal(超.缺口.文件['MEMORY.md'].K, 1);
+  });
+  新家();
+  写满到('MEMORY.md', 82);
+  const 驱 = M.体检();
+  检查('结论句：到 80% 驱逐线时明确「立刻归档」', () => {
+    assert.ok(驱.缺口.到驱逐.includes('MEMORY.md'));
+    assert.match(驱.缺口.一句话, /驱逐线/);
+    assert.match(驱.缺口.一句话, /立刻归档/);
+  });
+}
+
 // ⑭ 清理预案：写到待审文件、可追溯到条目、绝不自动删 / 干净记忆 0 误报
 {
   const 家 = 新家();
@@ -984,6 +1115,10 @@ console.log('\n  dsh-memory-doctor · 回归');
     assert.match(客户端, /生成清理预案/);
     assert.match(客户端, /选中这条/);
     assert.match(客户端, /为什么：/);
+    assert.match(客户端, /缺口\.一句话/);
+    assert.match(客户端, /选中这 /);
+    assert.match(客户端, /展开全部/);
+    assert.match(客户端, /仅按体积排序/);
   });
   检查('宿主提供压缩核对与清理预案接口', () => {
     assert.match(宿主, /api\/compress-report/);

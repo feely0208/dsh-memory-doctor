@@ -108,8 +108,13 @@ if (子 === 'pack') {
   打印(`可处理 ${r.条目数} 条，预计腾出 ${r.腾出字节} 字节`);
   for (const x of r.明细.slice(0, 12)) 打印(`  - ${x.文件} #${x.序号} ${x.动作}：${x.摘要}`);
 } else if (子 === 'check') {
-  const r = M.体检();
+  const 目标参 = 参.find((x) => x.startsWith('--目标='));
+  const 目标 = 目标参 ? Number(目标参.split('=')[1]) : undefined;
+  const r = M.体检(目标 ? { 目标百分比: 目标 } : {});
   for (const [名, 档] of Object.entries(r.文件)) 打印(`${名}：${档.大小}/${档.上限} 字节（${档.百分比}%），${档.条目数} 条`);
+  打印('');
+  打印('结论：' + (r.缺口 ? r.缺口.一句话 : '（无）'));
+  打印('');
   for (const s of r.建议) 打印('- ' + s);
   if (r.具体建议 && r.具体建议.length) {
     打印('');

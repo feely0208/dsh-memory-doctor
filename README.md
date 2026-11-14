@@ -193,3 +193,23 @@ bash tests/run.sh    # 148 项：拆条目/体检/瘦身/记忆包 v2/注入/四
 - 0.1.3：注入开关改为「自动让位 + doctor.json + 环境变量」三级，和别的记忆插件共存不再重复注入；补 28 项回归测试；清理仓库。
 - 0.1.2：`MEMORY_DOCTOR_INJECT` 开关 + 热记忆注入。
 - 0.1.0：热记忆注入 + 体检 / 瘦身 / 记忆包。
+
+## 会话提炼（digest）：把历史对话变成记忆草稿
+
+从 DeepSeek 官网导入历史会话后，不必再从零交代背景。`digest` 会读 DSH 的会话日志，输出一份**可核对的候选清单**，你删改后再写进 MEMORY/USER：
+
+```sh
+node scripts/cli.mjs digest                       # 全部工作区
+node scripts/cli.mjs digest --workspace 律师端 --limit 50
+node scripts/cli.mjs digest --since 2026-10-01 --out 草稿.md
+node scripts/cli.mjs digest --json                # 机器可读的统计
+```
+
+产出包含：主题分布（按用户消息命中的关键词）、反复出现的路径/包名、**问过 2 次以上的问题**、上次留下的未完成待办、以及标注 `[候选]` 的记忆条目。
+
+边界：
+
+- **只读，不写记忆**——不自动 append，避免把猜测写进长期记忆
+- **不调用模型**，纯统计；没证据的不写，所以不会编事实
+- 会自动剔除宿主注入的运行时样板（`Time sampled…`、`Current runtime context…` 等），否则统计会被污染
+- 会话日志是 zstd 多帧追加流，必须整段解压；缺少 `zstd` 命令时会降级为只读第一帧，并在草稿顶部明确提示「内容可能不全」

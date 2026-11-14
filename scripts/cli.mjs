@@ -10,6 +10,7 @@
  *   report [--存档 名称|--last] 看最近一次压缩的前后对比
  *   plan                        生成清理预案（写到待审文件，不自动删）
  *   check                       看体检结论
+ *   digest                      把会话日志提炼成记忆草稿（只读，不写记忆）
  *
  * 记忆根默认 ~/.mnemon，可用 MEMORY_DOCTOR_HOME 指定（测试/多环境用）。
  */
@@ -18,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const 包根 = join(dirname(fileURLToPath(import.meta.url)), '..');
 const M = await import(join(包根, 'lib/index.js'));
+const D = await import(join(包根, 'lib/digest.js'));
 
 const 参 = process.argv.slice(2);
 const 子 = (参[0] || '').toLowerCase();
@@ -121,10 +123,38 @@ if (子 === 'pack') {
     打印('可执行建议：');
     for (const x of r.具体建议.slice(0, 10)) 打印('  - ' + x.文本);
   }
+} else if (子 === 'digest') {
+  const 取 = (名, 默认) => {
+    const 项 = 参.find((x) => x.startsWith(`--${名}=`));
+    if (项) return 项.split('=').slice(1).join('=');
+    const i = 参.indexOf(`--${名}`);
+    return i >= 0 && 参[i + 1] && !参[i + 1].startsWith('--') ? 参[i + 1] : 默认;
+  };
+  const 选项 = {
+    工作区: 取('workspace', ''),
+    根: 取('root', undefined),
+    上限: Number(取('limit', 200)) || 200,
+    起始: 取('since', '') ? new Date(取('since', '')).getTime() : null,
+  };
+  if (选项.根 == null) delete 选项.根;
+  const r = D.提炼(选项);
+  if (!r.ok) 失败(r.错误);
+  if (旗标.has('--json')) {
+    打印(JSON.stringify({ ok: true, 汇总: r.汇总 }, null, 2));
+  } else {
+    打印(r.草稿);
+  }
+  const 输出 = 取('out', '');
+  if (输出) {
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(输出, r.草稿, 'utf8');
+    if (!旗标.has('--json')) { 打印(''); 打印('草稿已写到：' + 输出); }
+  }
 } else {
   打印('深鲸记忆 · 命令行');
   打印('  pack export | pack verify <目录> | pack import <目录> [--apply]');
   打印('  report [--last | --存档 名称] [--json]');
   打印('  plan | check');
+  打印('  digest [--workspace <关键词>] [--limit N] [--since YYYY-MM-DD] [--out 文件] [--json]');
   process.exit(子 ? 2 : 0);
 }

@@ -11,6 +11,10 @@
  *   plan                        生成清理预案（写到待审文件，不自动删）
  *   check                       看体检结论
  *   digest                      把会话日志提炼成记忆草稿（只读，不写记忆）
+ *   compress preview            预览四层压缩会做什么（不写任何东西）
+ *   compress undo --yes         撤销上一次压缩（整份放回压缩前状态）
+ *   compress auto|manual        压缩模式：自动 / 手动（到 80% 拦截）
+ *   audit [关键词]              看审计账本（哈希链是否完整）或某条记忆的来龙去脉
  *
  * 记忆根默认 ~/.mnemon，可用 MEMORY_DOCTOR_HOME 指定（测试/多环境用）。
  */
@@ -103,6 +107,46 @@ if (子 === 'pack') {
     打印('');
     打印('报告文件：' + (r.路径 || ''));
   }
+} else if (子 === 'compress') {
+  const 动作 = (余[0] || '').toLowerCase();
+  const 文件 = (参.find((x) => x.startsWith('--file=')) || '').split('=')[1] === 'USER.md' ? 'USER.md' : 'MEMORY.md';
+  if (动作 === 'preview') {
+    const r = M.预览压缩({ 文件 });
+    if (!r.触发) { 打印(r.说明 || `未到压缩线（${r.之前字节}/${r.限} 字节），无需压缩`); process.exit(0); }
+    打印(r.说明);
+    打印(`预览：${r.之前字节} → ${r.之后字节} 字节（${r.百分比}%）；预计 ${r.动作.length} 个动作`);
+    for (const a of r.动作) 打印(`  - ${a.类型} · 条目 #${a.序号 ?? '-'}${a.摘要 ? ' · ' + a.摘要 : ''}`);
+  } else if (动作 === 'undo') {
+    const r = M.撤销压缩({ 确认: 旗标.has('--yes') });
+    if (!r.ok) {
+      打印(r.需要确认 ? r.错误 : '撤销失败：' + (r.错误 || ''));
+      if (r.需要确认) 打印('确认后执行：compress undo --yes');
+      process.exit(r.需要确认 ? 0 : 1);
+    }
+    打印(r.说明);
+  } else if (动作 === 'auto' || 动作 === 'manual') {
+    打印(M.设自动压缩模式(动作).说明);
+  } else {
+    失败('可用：compress preview [--file=USER.md] | compress undo --yes | compress auto | compress manual');
+  }
+} else if (子 === 'audit') {
+  const 查 = 余[0] || '';
+  const 概要 = M.审计概要();
+  打印(概要.说明);
+  if (查) {
+    const r = M.记忆溯源(查);
+    for (const x of r.命中.slice(-20)) {
+      打印(`${x.时间} · ${x.动作} · ${x.目标}${x.会话 ? ' · ' + x.会话 : ''}`);
+      if (x.备注) 打印('    ' + x.备注);
+    }
+    if (!r.命中.length) 打印('没有相关记录');
+  } else {
+    const 记录们 = M.读审计();
+    打印(`动作：${Object.entries(概要.动作计数).map(([k, v]) => k + ' ' + v).join(' · ') || '无'}`);
+    for (const x of 记录们.slice(-15).reverse()) 打印(`- ${x.时间.slice(0, 19).replace('T', ' ')} ［${x.动作}］${x.目标 || ''}${x.摘要 !== undefined ? '' : ''}${x.条目摘要 ? ' · ' + x.条目摘要.slice(0, 40) : ''}${x.会话 ? '（' + x.会话 + '）' : ''}`);
+    const 模 = M.自动压缩模式();
+    打印(`压缩模式：${模 === 'manual' ? '手动（到 80% 拦截）' : '自动'}`);
+  }
 } else if (子 === 'plan') {
   const r = M.生成清理预案();
   if (!r.ok) 失败(r.错误 || '生成失败');
@@ -155,6 +199,8 @@ if (子 === 'pack') {
   打印('  pack export | pack verify <目录> | pack import <目录> [--apply]');
   打印('  report [--last | --存档 名称] [--json]');
   打印('  plan | check');
+  打印('  compress preview | compress undo --yes | compress auto | compress manual');
+  打印('  audit [关键词]');
   打印('  digest [--workspace <关键词>] [--limit N] [--since YYYY-MM-DD] [--out 文件] [--json]');
   process.exit(子 ? 2 : 0);
 }

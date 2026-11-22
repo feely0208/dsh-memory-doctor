@@ -22,7 +22,7 @@ for DIR in "$PAYLOAD" "$PLUGINS"; do
   cp -a "$DIR" "$DIR.bak-$TS" 2>/dev/null || true
   cp -a "$HERE/lib" "$DIR/" && cp "$HERE/package.json" "$HERE/README.md" "$DIR/"
   rm -f "$DIR"/lib/*.bak-* 2>/dev/null || true
-  echo "  ✅ $DIR（备份 .bak-$TS）"
+  echo "  ✅ ${DIR}（备份 .bak-${TS}）"
 done
 
 echo

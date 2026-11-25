@@ -82,13 +82,13 @@ console.log('\n  dsh-memory-doctor · 0.6.7 包含相似度 / 检索理由 / 驱
     assert.match(命中[0].理由, /精确符号|第 \d+ 个字符/);
   });
   检查('子串命中给出位置', () => {
-    const 命中 = M.搜记忆('本地与线上一致').filter((x) => x.命中 === '子串');
+    const 命中 = M.搜记忆('本地与线上一致').filter((x) => x.命中 === '字面命中');
     assert.ok(命中.length >= 1);
     assert.ok(命中[0].位置 >= 0);
   });
   检查('换措辞也能模糊命中并自我说明', () => {
     const 命中 = M.搜记忆('rsync静默覆盖线上');
-    const 模糊 = 命中.filter((x) => x.命中 === '模糊');
+    const 模糊 = 命中.filter((x) => x.命中 === '联想命中');
     assert.ok(模糊.length >= 1, '应有模糊命中：' + JSON.stringify(命中.map((x) => x.命中)));
     assert.match(模糊[0].理由, /三元组/);
   });
@@ -145,6 +145,34 @@ console.log('\n  dsh-memory-doctor · 0.6.7 包含相似度 / 检索理由 / 驱
   检查('报告 md 里写了「为什么动它」', () => {
     const md = fs.readFileSync(path.join(r.存档, '压缩报告.md'), 'utf8');
     assert.match(md, /为什么动它/);
+  });
+}
+
+
+// ⑥ 合并建议去冗余（0.6.8）：同一簇只提一次，不重复用同一条
+{
+  新家([
+    '官网部署铁律：部署前必须确认本地源码与线上一致，否则 rsync 静默覆盖（10-12 丢过五处）',
+    '部署前必须确认本地源码与线上一致',
+    '部署前确认本地源码和线上一致',
+    '发布纪律：任何对外动作前必须先征得同意，不得先斩后奏（违反过一次）',
+    '对外动作前必须先征得同意',
+  ].join('\n§\n') + '\n');
+  const r = M.体检();
+  const 合并 = (r.具体建议 || []).filter((x) => x.类型 === '合并');
+  检查('同一簇的重复不会给出多条重叠建议', () => {
+    const seen = new Set();
+    for (const x of 合并) {
+      const k = x.文件 + '#' + x.序号;
+      assert.ok(!seen.has(k), '同一条被建议了两次：' + k);
+      seen.add(k);
+    }
+  });
+  检查('折叠数被记录下来（不是悄悄少给）', () => assert.ok(typeof r.合并建议折叠 === 'number'));
+  检查('命中文案是人话标签', () => {
+    const 命中 = M.搜记忆('部署');
+    const 标签 = new Set(命中.map((x) => x.命中));
+    for (const t of 标签) assert.ok(['直接命中', '精确符号', '字面命中', '联想命中', '全部'].includes(t), '未知标签 ' + t);
   });
 }
 
